@@ -1,0 +1,8 @@
+-std=c++1z
+-I./build/external/install/include
+-I./assets
+-Wextra
+-Wall
+-Wpedantic
+-Wno-missing-braces
+-Wno-unused-const-variable
