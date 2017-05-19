@@ -12,9 +12,6 @@ public:
 	~MainWindowListener() = default;
 
 	void mouseButton(const ny::MouseButtonEvent&) override;
-	void mouseWheel(const ny::MouseWheelEvent&) override;
-	void mouseMove(const ny::MouseMoveEvent&) override;
-	void mouseCross(const ny::MouseCrossEvent&) override;
 	void key(const ny::KeyEvent&) override;
 	void state(const ny::StateEvent&) override;
 	void close(const ny::CloseEvent&) override;

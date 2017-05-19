@@ -12,18 +12,12 @@
 #include <shaders/compiled/triangle.frag.h>
 #include <shaders/compiled/triangle.vert.h>
 
-constexpr vk::SampleCountBits sampleCount = vk::SampleCountBits::e8;
-vk::Pipeline createGraphicsPipelines(const vpp::Device&, vk::RenderPass,
-	vk::PipelineLayout);
+vk::Pipeline createGraphicsPipelines(const vpp::Device&, vk::RenderPass, vk::PipelineLayout,
+	vk::SampleCountBits sampleCount);
+vpp::RenderPass createRenderPass(const vpp::Swapchain&, vk::SampleCountBits sampleCount);
 
-Renderer::Renderer(Engine& engine) : engine_(engine)
+Renderer::Renderer(Engine& engine, vk::SampleCountBits sampleCount) : engine_(engine)
 {
-	// graphics
-	graphicsLayout_ = {device(), {}, {}};
-	auto& renderPass = engine_.vulkanRenderPass();
-	auto pipeline = createGraphicsPipelines(device(), renderPass, graphicsLayout_);
-	trianglePipeline_ = {device(), pipeline};
-
 	// buffer
 	vk::BufferCreateInfo bufInfo;
 	bufInfo.usage = vk::BufferUsageBits::vertexBuffer;
@@ -46,6 +40,18 @@ Renderer::Renderer(Engine& engine) : engine_(engine)
 	acquireComplete_ = {device()};
 	renderComplete_ = {device()};
 
+	setupPipeline(sampleCount);
+}
+
+void Renderer::setupPipeline(vk::SampleCountBits sampleCount)
+{
+	// graphics
+	sampleCount_ = sampleCount;
+	graphicsLayout_ = {device(), {}, {}};
+	renderPass_ = createRenderPass(engine_.swapchain(), sampleCount);
+	auto pipeline = createGraphicsPipelines(device(), renderPass_, graphicsLayout_, sampleCount);
+	trianglePipeline_ = {device(), pipeline};
+
 	createBuffers();
 }
 
@@ -65,7 +71,7 @@ void Renderer::createMultisampleTarget()
 	img.arrayLayers = 1;
 	img.sharingMode = vk::SharingMode::exclusive;
 	img.tiling = vk::ImageTiling::optimal;
-	img.samples = sampleCount;
+	img.samples = sampleCount_;
 	img.usage = vk::ImageUsageBits::transientAttachment | vk::ImageUsageBits::colorAttachment;
 	img.initialLayout = vk::ImageLayout::undefined;
 
@@ -88,14 +94,17 @@ void Renderer::createMultisampleTarget()
 
 void Renderer::createBuffers()
 {
-	createMultisampleTarget();
+	auto msaa = sampleCount_ != vk::SampleCountBits::e1;
+	if(msaa) createMultisampleTarget();
 
 	// create render buffers
-	auto& renderPass = engine_.vulkanRenderPass();
-	vpp::Framebuffer::ExtAttachments attachments = {
-		{0, multisampleTarget_.vkImageView()},
-		{1, {}}
-	};
+	vpp::Framebuffer::ExtAttachments attachments;
+	auto swapchainID = 0u;
+
+	if(msaa) {
+		attachments = {{0, multisampleTarget_.vkImageView()}};
+		swapchainID = 1u;
+	}
 
 	// render buffers
 	auto images = engine_.swapchain().renderBuffers();
@@ -105,8 +114,8 @@ void Renderer::createBuffers()
 	renderBuffers_.resize(images.size());
 	for(auto i = 0u; i < renderBuffers_.size(); ++i) {
 		renderBuffers_[i].commandBuffer = std::move(cmdBuffers[i]);
-		attachments[1] = images[i].imageView;
-		renderBuffers_[i].framebuffer = {device(), renderPass, engine_.swapchain().size(),
+		attachments[swapchainID] = images[i].imageView;
+		renderBuffers_[i].framebuffer = {device(), renderPass_, engine_.swapchain().size(),
 			{}, attachments};
 	}
 
@@ -115,8 +124,6 @@ void Renderer::createBuffers()
 
 void Renderer::record()
 {
-	auto& renderPass = engine_.vulkanRenderPass();
-
 	// record buffers
 	vk::CommandBufferBeginInfo cmdBufInfo;
 	auto clearValues = std::vector<vk::ClearValue>{{{{{0.0f, 0.0f, 0.0f, 1.0f}}}}}; // clear
@@ -125,7 +132,7 @@ void Renderer::record()
 	auto height = engine_.swapchain().size().height;
 
 	vk::RenderPassBeginInfo rbeginInfo;
-	rbeginInfo.renderPass = renderPass;
+	rbeginInfo.renderPass = renderPass_;
 	rbeginInfo.renderArea = {{0, 0}, {width, height}};
 	rbeginInfo.clearValueCount = clearValues.size();
 	rbeginInfo.pClearValues = clearValues.data();
@@ -166,7 +173,15 @@ void Renderer::build(vk::CommandBuffer cmdBuffer)
 void Renderer::renderBlock(const vpp::Queue& present)
 {
 	unsigned int currentBuffer;
-	engine_.swapchain().acquire(currentBuffer, acquireComplete_);
+	auto result = engine_.swapchain().acquire(currentBuffer, acquireComplete_);
+	if(result == vk::Result::errorOutOfDateKHR) {
+		// we simply skip the frame since the engine should resize/recreate
+		// the swapchain (and the renderer data) in the next loop during
+		// dispatching of events since we must have gotten a resize event.
+		ny::log("Swapchain out of date. Skipping frame");
+		return;
+	}
+
 	auto& cmdBuf = renderBuffers_[currentBuffer].commandBuffer;
 	vk::PipelineStageFlags flag = vk::PipelineStageBits::colorAttachmentOutput;
 
@@ -189,7 +204,7 @@ vpp::Device& Renderer::device() const { return engine_.vulkanDevice(); }
 
 // utility
 vk::Pipeline createGraphicsPipelines(const vpp::Device& device,
-	vk::RenderPass renderPass, vk::PipelineLayout layout)
+	vk::RenderPass renderPass, vk::PipelineLayout layout, vk::SampleCountBits sampleCount)
 {
 	auto lightVertex = vpp::ShaderModule(device, triangle_vert_data);
 	auto lightFragment = vpp::ShaderModule(device, triangle_frag_data);
@@ -285,4 +300,87 @@ vk::Pipeline createGraphicsPipelines(const vpp::Device& device,
 	vpp::save(cache, cacheName);
 
 	return ret;
+}
+
+vpp::RenderPass createRenderPass(const vpp::Swapchain& swapchain, vk::SampleCountBits sampleCount)
+{
+	vk::AttachmentDescription attachments[2] {};
+	auto msaa = sampleCount != vk::SampleCountBits::e1;
+
+	auto swapchainID = 0u;
+	if(msaa) {
+		// multisample color attachment
+		attachments[0].format = swapchain.format();
+		attachments[0].samples = sampleCount;
+		attachments[0].loadOp = vk::AttachmentLoadOp::clear;
+		attachments[0].storeOp = vk::AttachmentStoreOp::dontCare;
+		attachments[0].stencilLoadOp = vk::AttachmentLoadOp::dontCare;
+		attachments[0].stencilStoreOp = vk::AttachmentStoreOp::dontCare;
+		attachments[0].initialLayout = vk::ImageLayout::undefined;
+		attachments[0].finalLayout = vk::ImageLayout::presentSrcKHR;
+
+		swapchainID = 1u;
+	}
+
+	// swapchain color attachments we want to resolve to
+	attachments[swapchainID].format = swapchain.format();
+	attachments[swapchainID].samples = vk::SampleCountBits::e1;
+	if(msaa) attachments[swapchainID].loadOp = vk::AttachmentLoadOp::dontCare;
+	else attachments[swapchainID].loadOp = vk::AttachmentLoadOp::clear;
+	attachments[swapchainID].storeOp = vk::AttachmentStoreOp::store;
+	attachments[swapchainID].stencilLoadOp = vk::AttachmentLoadOp::dontCare;
+	attachments[swapchainID].stencilStoreOp = vk::AttachmentStoreOp::dontCare;
+	attachments[swapchainID].initialLayout = vk::ImageLayout::undefined;
+	attachments[swapchainID].finalLayout = vk::ImageLayout::presentSrcKHR;
+
+	// refs
+	vk::AttachmentReference colorReference;
+	colorReference.attachment = 0;
+	colorReference.layout = vk::ImageLayout::colorAttachmentOptimal;
+
+	vk::AttachmentReference resolveReference;
+	resolveReference.attachment = 1;
+	resolveReference.layout = vk::ImageLayout::colorAttachmentOptimal;
+
+	// deps
+	std::array<vk::SubpassDependency, 2> dependencies;
+
+	dependencies[0].srcSubpass = vk::subpassExternal;
+	dependencies[0].dstSubpass = 0;
+	dependencies[0].srcStageMask = vk::PipelineStageBits::bottomOfPipe;
+	dependencies[0].dstStageMask = vk::PipelineStageBits::colorAttachmentOutput;
+	dependencies[0].srcAccessMask = vk::AccessBits::memoryRead;
+	dependencies[0].dstAccessMask = vk::AccessBits::colorAttachmentRead |
+		vk::AccessBits::colorAttachmentWrite;
+	dependencies[0].dependencyFlags = vk::DependencyBits::byRegion;
+
+	dependencies[1].srcSubpass = 0;
+	dependencies[1].dstSubpass = vk::subpassExternal;
+	dependencies[1].srcStageMask = vk::PipelineStageBits::colorAttachmentOutput;;
+	dependencies[1].dstStageMask = vk::PipelineStageBits::bottomOfPipe;
+	dependencies[1].srcAccessMask = vk::AccessBits::colorAttachmentRead |
+		vk::AccessBits::colorAttachmentWrite;
+	dependencies[1].dstAccessMask = vk::AccessBits::memoryRead;
+	dependencies[1].dependencyFlags = vk::DependencyBits::byRegion;
+
+	// only subpass
+	vk::SubpassDescription subpass;
+	subpass.pipelineBindPoint = vk::PipelineBindPoint::graphics;
+	subpass.colorAttachmentCount = 1;
+	subpass.pColorAttachments = &colorReference;
+	if(sampleCount != vk::SampleCountBits::e1)
+		subpass.pResolveAttachments = &resolveReference;
+
+	vk::RenderPassCreateInfo renderPassInfo;
+	renderPassInfo.attachmentCount = 1 + msaa;
+	renderPassInfo.pAttachments = attachments;
+	renderPassInfo.subpassCount = 1;
+	renderPassInfo.pSubpasses = &subpass;
+
+	if(msaa) {
+		renderPassInfo.dependencyCount = dependencies.size();
+		renderPassInfo.pDependencies = dependencies.data();
+	}
+
+	return {swapchain.device(), renderPassInfo};
 }

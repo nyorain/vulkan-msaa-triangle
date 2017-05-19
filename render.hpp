@@ -6,6 +6,7 @@
 #include <vpp/pipeline.hpp> // vpp::Pipeline
 #include <vpp/descriptor.hpp> // vpp::DescriptorSet
 #include <vpp/commandBuffer.hpp>
+#include <vpp/renderPass.hpp>
 #include <vpp/framebuffer.hpp>
 #include <vpp/sync.hpp>
 #include <vpp/queue.hpp>
@@ -15,9 +16,10 @@ class Engine;
 // vpp::RendererBuilder implementation
 class Renderer {
 public:
-	Renderer(Engine& engine);
+	Renderer(Engine& engine, vk::SampleCountBits sampleCount);
 	~Renderer() = default;
 
+	void setupPipeline(vk::SampleCountBits sampleCount);
 	void createBuffers();
 	void renderBlock(const vpp::Queue& present);
 
@@ -35,6 +37,8 @@ protected:
 	vpp::PipelineLayout graphicsLayout_;
 	vpp::Buffer vertexBuffer_;
 	vpp::ViewableImage multisampleTarget_;
+	vpp::RenderPass renderPass_;
+	vk::SampleCountBits sampleCount_;
 	const vpp::Queue* renderQueue_;
 
 	vpp::Semaphore acquireComplete_;

@@ -1,5 +1,6 @@
 #include <window.hpp>
 #include <engine.hpp>
+#include <render.hpp>
 
 #include <ny/log.hpp> // ny::log
 #include <ny/key.hpp> // ny::Keycode
@@ -48,18 +49,6 @@ void MainWindowListener::mouseButton(const ny::MouseButtonEvent& ev)
 		}
 	}
 }
-void MainWindowListener::mouseWheel(const ny::MouseWheelEvent&)
-{
-	// unused
-}
-void MainWindowListener::mouseMove(const ny::MouseMoveEvent&)
-{
-	// unused
-}
-void MainWindowListener::mouseCross(const ny::MouseCrossEvent&)
-{
-	// unused
-}
 void MainWindowListener::key(const ny::KeyEvent& keyEvent)
 {
 	auto keycode = keyEvent.keycode;
@@ -96,15 +85,15 @@ void MainWindowListener::key(const ny::KeyEvent& keyEvent)
 			ny::log("d pressed. Trying to toggle decorations");
 			wc().customDecorated(!wc().customDecorated());
 		}
-	}
-	/*
-	else if(keyEvent.pressed) {
-		if(keycode == ny::Keycode::l) {
-			renderer->renderLines = !renderer->renderLines;
-			swapchainRenderer->record();
+	} else if(keyEvent.pressed) {
+		if(keycode == ny::Keycode::k1) {
+			ny::log("Using no multisampling");
+			engine_.renderer().setupPipeline(vk::SampleCountBits::e1);
+		} else if(keycode == ny::Keycode::k8) {
+			ny::log("Using 8 multisamples");
+			engine_.renderer().setupPipeline(vk::SampleCountBits::e8);
 		}
 	}
-	*/
 }
 void MainWindowListener::state(const ny::StateEvent& stateEvent)
 {

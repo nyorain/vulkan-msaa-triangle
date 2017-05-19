@@ -20,8 +20,6 @@
 #include <chrono>
 using Clock = std::chrono::high_resolution_clock;
 
-constexpr vk::SampleCountBits sampleCounts = vk::SampleCountBits::e8;
-
 struct Engine::Impl {
 	std::unique_ptr<ny::AppContext> appContext_;
 	vpp::Instance instance;
@@ -31,7 +29,6 @@ struct Engine::Impl {
 	vpp::Swapchain swapchain {};
 	const vpp::Queue* presentQueue {};
 	vpp::DefaultSwapchainSettings scSettings;
-	vpp::RenderPass renderPass;
 
 	Clock::time_point lastFrame_; // used for frame delta
 
@@ -41,15 +38,13 @@ struct Engine::Impl {
 	Impl(Engine& engine) : windowListener(engine) {}
 };
 
-// utility
-vpp::RenderPass createRenderPass(const vpp::Swapchain&);
-
 Engine::Engine()
 {
-	// settings and (for now) hardcoded stuff
-	constexpr auto layerName = "VK_LAYER_LUNARG_standard_validation";
-	constexpr auto debug = true;
+	// for now hardcoded stuff
 	constexpr auto startSize = nytl::Vec2ui{1100, 800};
+	constexpr auto useValidation = true;
+	constexpr auto startMsaa = vk::SampleCountBits::e1;
+	constexpr auto layerName = "VK_LAYER_LUNARG_standard_validation";
 
 	impl_ = std::make_unique<Impl>(*this);
 
@@ -72,7 +67,7 @@ Engine::Engine()
 	instanceInfo.enabledExtensionCount = iniExtensions.size();
 	instanceInfo.ppEnabledExtensionNames = iniExtensions.data();
 
-	if(debug) {
+	if(useValidation) {
 		instanceInfo.enabledLayerCount = 1;
 		instanceInfo.ppEnabledLayerNames = &layerName;
 	}
@@ -90,7 +85,8 @@ Engine::Engine()
 	}
 
 	// debug callback
-	if(debug) impl_->debugCallback = std::make_unique<vpp::DebugCallback>(impl_->instance);
+	if(useValidation)
+		impl_->debugCallback = std::make_unique<vpp::DebugCallback>(impl_->instance);
 
 	// init ny window
 	auto vkSurface = vk::SurfaceKHR {};
@@ -110,12 +106,10 @@ Engine::Engine()
 
 	impl_->scSettings.prefPresentMode = vk::PresentModeKHR::immediate;
 	impl_->scSettings.errorAction = vpp::DefaultSwapchainSettings::ErrorAction::none;
-
 	impl_->swapchain = {dev, vkSurface, {startSize[0], startSize[1]}, impl_->scSettings};
-	impl_->renderPass = createRenderPass(impl_->swapchain);
 
 	// renderer
-	impl_->renderer_ = std::make_unique<Renderer>(*this);
+	impl_->renderer_ = std::make_unique<Renderer>(*this, startMsaa);
 }
 
 Engine::~Engine()
@@ -179,54 +173,4 @@ ny::WindowContext& Engine::windowContext() const { return *impl_->windowContext_
 vpp::Instance& Engine::vulkanInstance() const { return impl_->instance; }
 vpp::Device& Engine::vulkanDevice() const { return *impl_->device; }
 vpp::Swapchain& Engine::swapchain() const { return impl_->swapchain; }
-vpp::RenderPass& Engine::vulkanRenderPass() const { return impl_->renderPass; }
 Renderer& Engine::renderer() const { return *impl_->renderer_; }
-
-// utility impl
-vpp::RenderPass createRenderPass(const vpp::Swapchain& swapchain)
-{
-	vk::AttachmentDescription attachments[2] {};
-
-	// multisample color attachment
-	attachments[0].format = swapchain.format();
-	attachments[0].samples = sampleCounts;
-	attachments[0].loadOp = vk::AttachmentLoadOp::clear;
-	attachments[0].storeOp = vk::AttachmentStoreOp::dontCare;
-	attachments[0].stencilLoadOp = vk::AttachmentLoadOp::dontCare;
-	attachments[0].stencilStoreOp = vk::AttachmentStoreOp::dontCare;
-	attachments[0].initialLayout = vk::ImageLayout::undefined;
-	attachments[0].finalLayout = vk::ImageLayout::presentSrcKHR;
-
-	// swapchain color attachments we want to resolve to
-	attachments[1].format = swapchain.format();
-	attachments[1].samples = vk::SampleCountBits::e1;
-	attachments[1].loadOp = vk::AttachmentLoadOp::dontCare;
-	attachments[1].storeOp = vk::AttachmentStoreOp::store;
-	attachments[1].stencilLoadOp = vk::AttachmentLoadOp::dontCare;
-	attachments[1].stencilStoreOp = vk::AttachmentStoreOp::dontCare;
-	attachments[1].initialLayout = vk::ImageLayout::undefined;
-	attachments[1].finalLayout = vk::ImageLayout::presentSrcKHR;
-
-	vk::AttachmentReference colorReference;
-	colorReference.attachment = 0;
-	colorReference.layout = vk::ImageLayout::colorAttachmentOptimal;
-
-	vk::AttachmentReference resolveReference;
-	resolveReference.attachment = 1;
-	resolveReference.layout = vk::ImageLayout::colorAttachmentOptimal;
-
-	// only subpass
-	vk::SubpassDescription subpass;
-	subpass.pipelineBindPoint = vk::PipelineBindPoint::graphics;
-	subpass.colorAttachmentCount = 1;
-	subpass.pColorAttachments = &colorReference;
-	subpass.pResolveAttachments = &resolveReference;
-
-	vk::RenderPassCreateInfo renderPassInfo;
-	renderPassInfo.attachmentCount = 2;
-	renderPassInfo.pAttachments = attachments;
-	renderPassInfo.subpassCount = 1;
-	renderPassInfo.pSubpasses = &subpass;
-
-	return {swapchain.device(), renderPassInfo};
-}

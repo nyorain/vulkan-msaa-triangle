@@ -2,6 +2,7 @@
 
 #include <ny/fwd.hpp>
 #include <vpp/fwd.hpp>
+#include <vpp/vulkan/enums.hpp>
 #include <nytl/vec.hpp>
 
 class Renderer;
@@ -20,7 +21,6 @@ public:
 	vpp::Instance& vulkanInstance() const;
 	vpp::Device& vulkanDevice() const;
 	vpp::Swapchain& swapchain() const;
-	vpp::RenderPass& vulkanRenderPass() const;
 
 	Renderer& renderer() const;
 
