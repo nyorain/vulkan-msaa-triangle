@@ -20,7 +20,6 @@ public:
 	vpp::Instance& vulkanInstance() const;
 	vpp::Device& vulkanDevice() const;
 	vpp::Swapchain& swapchain() const;
-	vpp::SwapchainRenderer& vulkanRenderer() const;
 	vpp::RenderPass& vulkanRenderPass() const;
 
 	Renderer& renderer() const;
