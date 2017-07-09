@@ -1,3 +1,7 @@
+// Copyright (c) 2017 nyorain
+// Distributed under the Boost Software License, Version 1.0.
+// See accompanying file LICENSE or copy at http://www.boost.org/LICENSE_1_0.txt
+
 #include <render.hpp>
 #include <engine.hpp>
 
@@ -6,7 +10,9 @@
 #include <vpp/util/file.hpp>
 #include <vpp/renderPass.hpp>
 #include <vpp/swapchain.hpp>
-#include <ny/log.hpp>
+
+#include <dlg/dlg.hpp> // dlg
+using namespace dlg::literals;
 
 // shader data
 #include <shaders/compiled/triangle.frag.h>
@@ -178,7 +184,7 @@ void Renderer::renderBlock(const vpp::Queue& present)
 		// we simply skip the frame since the engine should resize/recreate
 		// the swapchain (and the renderer data) in the next loop during
 		// dispatching of events since we must have gotten a resize event.
-		ny::log("Swapchain out of date. Skipping frame");
+		dlg_info("render"_module, "Swapchain out of date. Skipping frame");
 		return;
 	}
 
@@ -206,6 +212,7 @@ vpp::Device& Renderer::device() const { return engine_.vulkanDevice(); }
 vk::Pipeline createGraphicsPipelines(const vpp::Device& device,
 	vk::RenderPass renderPass, vk::PipelineLayout layout, vk::SampleCountBits sampleCount)
 {
+	// auto msaa = sampleCount != vk::SampleCountBits::e1;
 	auto lightVertex = vpp::ShaderModule(device, triangle_vert_data);
 	auto lightFragment = vpp::ShaderModule(device, triangle_frag_data);
 
@@ -255,7 +262,7 @@ vk::Pipeline createGraphicsPipelines(const vpp::Device& device,
 	vk::PipelineMultisampleStateCreateInfo multisampleInfo;
 	multisampleInfo.rasterizationSamples = sampleCount;
 	multisampleInfo.sampleShadingEnable = false;
-	multisampleInfo.alphaToOneEnable = false;
+	multisampleInfo.alphaToCoverageEnable = false;
 	trianglePipe.pMultisampleState = &multisampleInfo;
 
 	vk::PipelineColorBlendAttachmentState blendAttachment;

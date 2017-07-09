@@ -1,8 +1,12 @@
+// Copyright (c) 2017 nyorain
+// Distributed under the Boost Software License, Version 1.0.
+// See accompanying file LICENSE or copy at http://www.boost.org/LICENSE_1_0.txt
+
 #include <window.hpp>
 #include <engine.hpp>
 #include <render.hpp>
 
-#include <ny/log.hpp> // ny::log
+#include <dlg/dlg.hpp> // dlg
 #include <ny/key.hpp> // ny::Keycode
 #include <ny/mouseButton.hpp> // ny::MouseButton
 #include <ny/image.hpp> // ny::Image
@@ -14,6 +18,8 @@
 
 // TODO: to make this work for android, implement the surfaceCreated/surfaceDestroyed
 // methods
+
+using namespace dlg::literals;
 
 void MainWindowListener::mouseButton(const ny::MouseButtonEvent& ev)
 {
@@ -39,10 +45,10 @@ void MainWindowListener::mouseButton(const ny::MouseButtonEvent& ev)
 					resizeEdges |= ny::WindowEdge::bottom;
 
 				if(resizeEdges != ny::WindowEdge::none) {
-					ny::log("Starting to resize window");
+					dlg_info("window"_module, "Starting to resize window");
 					wc().beginResize(ev.eventData, resizeEdges);
 				} else {
-					ny::log("Starting to move window");
+					dlg_info("window"_module, "Starting to move window");
 					wc().beginMove(ev.eventData);
 				}
 			}
@@ -51,10 +57,12 @@ void MainWindowListener::mouseButton(const ny::MouseButtonEvent& ev)
 }
 void MainWindowListener::key(const ny::KeyEvent& keyEvent)
 {
+	static const dlg::Source source = "window"_module;
+
 	auto keycode = keyEvent.keycode;
 	if(keyEvent.pressed && ac().keyboardContext()->modifiers() & ny::KeyboardModifier::shift) {
 		if(keycode == ny::Keycode::f) {
-			ny::log("f pressed. Toggling fullscreen");
+			dlg_info(source, "f pressed. Toggling fullscreen");
 			if(toplevelState_ != ny::ToplevelState::fullscreen) {
 				wc().fullscreen();
 				toplevelState_ = ny::ToplevelState::fullscreen;
@@ -63,13 +71,13 @@ void MainWindowListener::key(const ny::KeyEvent& keyEvent)
 				toplevelState_ = ny::ToplevelState::normal;
 			}
 		} else if(keycode == ny::Keycode::n) {
-			ny::log("n pressed. Resetting window to normal state");
+			dlg_info(source, "n pressed. Resetting window to normal state");
 			wc().normalState();
 		} else if(keycode == ny::Keycode::escape) {
-			ny::log("escape pressed. Closing window and exiting");
+			dlg_info(source, "escape pressed. Closing window and exiting");
 			engine_.stop();
 		} else if(keycode == ny::Keycode::m) {
-			ny::log("m pressed. Toggle window maximize");
+			dlg_info(source, "m pressed. Toggle window maximize");
 			if(toplevelState_ != ny::ToplevelState::maximized) {
 				wc().maximize();
 				toplevelState_ = ny::ToplevelState::maximized;
@@ -78,19 +86,19 @@ void MainWindowListener::key(const ny::KeyEvent& keyEvent)
 				toplevelState_ = ny::ToplevelState::normal;
 			}
 		} else if(keycode == ny::Keycode::i) {
-			ny::log("i pressed, Minimizing window");
+			dlg_info(source, "i pressed, Minimizing window");
 			toplevelState_ = ny::ToplevelState::minimized;
 			wc().minimize();
 		} else if(keycode == ny::Keycode::d) {
-			ny::log("d pressed. Trying to toggle decorations");
+			dlg_info(source, "d pressed. Trying to toggle decorations");
 			wc().customDecorated(!wc().customDecorated());
 		}
 	} else if(keyEvent.pressed) {
 		if(keycode == ny::Keycode::k1) {
-			ny::log("Using no multisampling");
+			dlg_info(source, "Using no multisampling");
 			engine_.renderer().setupPipeline(vk::SampleCountBits::e1);
 		} else if(keycode == ny::Keycode::k8) {
-			ny::log("Using 8 multisamples");
+			dlg_info(source, "Using 8 multisamples");
 			engine_.renderer().setupPipeline(vk::SampleCountBits::e8);
 		}
 	}
@@ -106,7 +114,7 @@ void MainWindowListener::close(const ny::CloseEvent&)
 }
 void MainWindowListener::resize(const ny::SizeEvent& ev)
 {
-	// ny::log("resize: ", ev.size, " -- ", swapchain->vkHandle());
+	dlg_info("window"_module, "resize: {}", ev.size);
 	size_ = ev.size;
 	engine_.resize(ev.size);
 }

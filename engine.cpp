@@ -1,3 +1,7 @@
+// Copyright (c) 2017 nyorain
+// Distributed under the Boost Software License, Version 1.0.
+// See accompanying file LICENSE or copy at http://www.boost.org/LICENSE_1_0.txt
+
 #include <engine.hpp>
 #include <window.hpp>
 #include <render.hpp>
@@ -8,7 +12,6 @@
 #include <ny/windowListener.hpp> // ny::WindowListener
 #include <ny/windowSettings.hpp> // ny::WindowSettings
 #include <ny/loopControl.hpp> // ny::LoopControl
-#include <ny/log.hpp> // ny::error
 
 #include <vpp/instance.hpp> // vpp::Instance
 #include <vpp/device.hpp> // vpp::Device
@@ -16,6 +19,9 @@
 #include <vpp/swapchain.hpp> // vpp::Swapchain
 #include <vpp/renderer.hpp> // vpp::SwapchainRenderer
 #include <vpp/debug.hpp> // vpp::DebugCallback
+
+#include <dlg/dlg.hpp> // dlg
+using namespace dlg::literals;
 
 #include <chrono>
 using Clock = std::chrono::high_resolution_clock;
@@ -77,10 +83,10 @@ Engine::Engine()
 		if(!impl_->instance.vkInstance())
 			throw std::runtime_error("vkCreateInstance returned a nullptr");
 	} catch(const std::exception& error) {
-		ny::error("Engine: Vulkan instance creation failed:\n");
-		ny::error(error.what());
-		ny::error("\nThis may indicate that your computer does not support vulkan\n");
-		ny::error("This application will not work without vulkan support. Rethrowing.\n");
+		dlg::SourceGuard guard("engine");
+		dlg_error("Vulkan instance creation failed: {}", error.what());
+		dlg_error("\tThis may indicate that your system that does support vulkan");
+		dlg_error("\tThis application requires vulkan to work; rethrowing");
 		throw;
 	}
 
@@ -133,7 +139,7 @@ void Engine::mainLoop()
 	// vpp for examples.
 	while(run_) {
 		if(!impl_->appContext_->dispatchEvents()) {
-			ny::log("Engine::mainLoop: dispatchEvents returned false");
+			dlg_info("Engine::mainLoop: dispatchEvents returned false");
 			return;
 		}
 
@@ -147,7 +153,7 @@ void Engine::mainLoop()
 			++fpsCounter;
 			secCounter += deltaCount;
 			if(secCounter >= 1.f) {
-				ny::log(fpsCounter, " fps");
+				dlg_info("mainLoop"_scope, "{} fps", fpsCounter);
 				secCounter = 0.f;
 				fpsCounter = 0;
 			}

@@ -103,6 +103,10 @@ target_link_libraries(triangle ny vpp ${Vulkan_LIBRARY})
 add_custom_target(copy-scripts ALL)
 add_dependencies(triangle copy-scripts)
 
+add_definitions(-DDLG_DEBUG=${Debug})
+add_definitions(-DDLG_BASE_PATH="${CMAKE_SOURCE_DIR}/")
+add_definitions(-DDLG_HEADER_ONLY=0)
+
 add_custom_command(
 	TARGET copy-scripts
 	DEPENDS ${scripts}
