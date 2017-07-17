@@ -83,7 +83,7 @@ Engine::Engine()
 		if(!impl_->instance.vkInstance())
 			throw std::runtime_error("vkCreateInstance returned a nullptr");
 	} catch(const std::exception& error) {
-		dlg::SourceGuard guard("engine");
+		dlg_source("Engine"_module);
 		dlg_error("Vulkan instance creation failed: {}", error.what());
 		dlg_error("\tThis may indicate that your system that does support vulkan");
 		dlg_error("\tThis application requires vulkan to work; rethrowing");
@@ -139,7 +139,7 @@ void Engine::mainLoop()
 	// vpp for examples.
 	while(run_) {
 		if(!impl_->appContext_->dispatchEvents()) {
-			dlg_info("Engine::mainLoop: dispatchEvents returned false");
+			dlg_info("::Engine::mainLoop"_src, "dispatchEvents returned false");
 			return;
 		}
 
@@ -153,7 +153,7 @@ void Engine::mainLoop()
 			++fpsCounter;
 			secCounter += deltaCount;
 			if(secCounter >= 1.f) {
-				dlg_info("mainLoop"_scope, "{} fps", fpsCounter);
+				dlg_info("::Engine::mainLoop"_src, "{} fps", fpsCounter);
 				secCounter = 0.f;
 				fpsCounter = 0;
 			}
