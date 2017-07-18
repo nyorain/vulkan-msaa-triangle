@@ -11,18 +11,20 @@ if glslang.found()
 
 	foreach shader : shaders_src
 		spv = custom_target(
-			shader.join('_spv'),
+			shader + '_spv',
+			output: shader + '.spv',
 			input: shader,
-			output: shader.join('.spv'),
 			command: [glslang, '-V', '@INPUT@', '-o', '@OUTPUT@'])
 
+		output = files('compiled/' + shader + '.h')
+		name = shader.underscorify() + '_data'
 		header = custom_target(
-			shader.join('_header'),
-			input: shader.join('.spv'),
-			output: shader.join('.h'))
-			command: [bth_exe, '-i', '@INPUT@', '-o', '@OUTPUT@', '-s32'])
+			shader + '_header',
+			output: shader + '.h', # actually a dummy output file
+			depends: spv,
+			command: [bth_exe, spv.full_path(), output, '-size', '32', '-name', name])
 
-		shaders += [header]
+		shaders += [header, output]
 	endforeach
 else
 	message('No glslangValidator, cannot rebuild shaders from source')
