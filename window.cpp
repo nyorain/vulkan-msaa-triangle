@@ -97,6 +97,12 @@ void MainWindowListener::key(const ny::KeyEvent& keyEvent)
 		if(keycode == ny::Keycode::k1) {
 			dlg_info(source, "Using no multisampling");
 			engine_.renderer().setupPipeline(vk::SampleCountBits::e1);
+		} else if(keycode == ny::Keycode::k2) {
+			dlg_info(source, "Using 2 multisamples");
+			engine_.renderer().setupPipeline(vk::SampleCountBits::e2);
+		} else if(keycode == ny::Keycode::k4) {
+			dlg_info(source, "Using 4 multisamples");
+			engine_.renderer().setupPipeline(vk::SampleCountBits::e4);
 		} else if(keycode == ny::Keycode::k8) {
 			dlg_info(source, "Using 8 multisamples");
 			engine_.renderer().setupPipeline(vk::SampleCountBits::e8);

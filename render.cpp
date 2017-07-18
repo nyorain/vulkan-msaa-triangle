@@ -15,8 +15,8 @@
 using namespace dlg::literals;
 
 // shader data
-#include <shaders/compiled/triangle.frag.h>
-#include <shaders/compiled/triangle.vert.h>
+#include <shaders/triangle.frag.h>
+#include <shaders/triangle.vert.h>
 
 vk::Pipeline createGraphicsPipelines(const vpp::Device&, vk::RenderPass, vk::PipelineLayout,
 	vk::SampleCountBits sampleCount);

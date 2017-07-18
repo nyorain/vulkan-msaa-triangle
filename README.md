@@ -9,7 +9,11 @@ The main structure can be easily extended and already separates window and input
 the rendering logic. It could also be easily extended by application- or game-logic as
 third component.
 
-Everything is brought together using cmake, building it will download the dependencies automatically.
-Requires a solid C++17 compiler, i.e. gcc 7 or clang 4 (with a standard library including <any>).
+One can toggle between {1, 2, 4, 8} samples by using the associated keyboard keys.
+
+Everything is brought together using meson, building it will download the dependencies automatically.
+Requires a solid C++17 compiler, i.e. only gcc 7 atm (clang 5 soon probably as well, visual studio
+might work in a couple of decades as well). Also requires 'glslangValidator' to be in a
+binary path where it can be found by meson.
 Works on windows and linux (native x11 and wayland support) and could support
 android as well (due to the ny-android backend, not tested/developed for it though).

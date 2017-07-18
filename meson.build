@@ -4,8 +4,6 @@ project('vk-msaa-triangle', 'cpp',
 	meson_version: '>=0.38',
   default_options: ['cpp_std=c++1z'])
 
-rebuild_shaders = true
-
 # default arrguments
 # warnings and stuff
 add_project_arguments(
@@ -25,11 +23,8 @@ dep_vpp = dependency('vpp', fallback: ['vpp', 'vpp_dep'])
 dep_ny = dependency('ny', fallback: ['ny', 'ny_dep'])
 dep_vulkan = meson.get_compiler('cpp').find_library('vulkan')
 
-if rebuild_shaders
-	subdir('assets/shaders')
-else
-	shaders = []
-endif
+subdir('assets/shaders')
+shader_inc = include_directories('assets') # for headers in build folder
 
 src = [
 	shaders,
@@ -40,4 +35,4 @@ src = [
 
 executable('triangle', src,
 	dependencies: [dep_vpp, dep_vulkan, dep_ny],
-	include_directories: include_directories('assets'))
+	include_directories: shader_inc)
