@@ -11,7 +11,6 @@
 #include <ny/windowContext.hpp> // ny::WindowContext
 #include <ny/windowListener.hpp> // ny::WindowListener
 #include <ny/windowSettings.hpp> // ny::WindowSettings
-#include <ny/loopControl.hpp> // ny::LoopControl
 
 #include <vpp/instance.hpp> // vpp::Instance
 #include <vpp/device.hpp> // vpp::Device
@@ -21,25 +20,19 @@
 #include <vpp/debug.hpp> // vpp::DebugCallback
 
 #include <dlg/dlg.hpp> // dlg
-using namespace dlg::literals;
 
 #include <chrono>
 using Clock = std::chrono::high_resolution_clock;
 
 struct Engine::Impl {
-	std::unique_ptr<ny::AppContext> appContext_;
+	std::unique_ptr<ny::AppContext> appContext;
 	vpp::Instance instance;
 	std::unique_ptr<vpp::DebugCallback> debugCallback;
-	std::unique_ptr<ny::WindowContext> windowContext_;
+	std::unique_ptr<ny::WindowContext> windowContext;
 	std::unique_ptr<vpp::Device> device;
-	vpp::Swapchain swapchain {};
-	const vpp::Queue* presentQueue {};
-	vpp::DefaultSwapchainSettings scSettings;
-
-	Clock::time_point lastFrame_; // used for frame delta
 
 	MainWindowListener windowListener;
-	std::unique_ptr<Renderer> renderer_ {};
+	std::unique_ptr<Renderer> renderer {};
 
 	Impl(Engine& engine) : windowListener(engine) {}
 };
@@ -56,14 +49,15 @@ Engine::Engine()
 
 	// ny backend and appContext
 	auto& backend = ny::Backend::choose();
-	if(!backend.vulkan())
+	if(!backend.vulkan()) {
 		throw std::runtime_error("Engine: ny backend has no vulkan support!");
+	}
 
-	impl_->appContext_ = backend.createAppContext();
+	impl_->appContext = backend.createAppContext();
 
 	// vulkan init
 	// instance
-	auto iniExtensions = impl_->appContext_->vulkanExtensions();
+	auto iniExtensions = impl_->appContext->vulkanExtensions();
 	iniExtensions.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
 
 	vk::ApplicationInfo appInfo ("msaa-triangle", 1, "msaa-triangle", 1, VK_API_VERSION_1_0);
@@ -83,7 +77,6 @@ Engine::Engine()
 		if(!impl_->instance.vkInstance())
 			throw std::runtime_error("vkCreateInstance returned a nullptr");
 	} catch(const std::exception& error) {
-		dlg_source("Engine"_module);
 		dlg_error("Vulkan instance creation failed: {}", error.what());
 		dlg_error("\tThis may indicate that your system that does support vulkan");
 		dlg_error("\tThis application requires vulkan to work; rethrowing");
@@ -91,8 +84,9 @@ Engine::Engine()
 	}
 
 	// debug callback
-	if(useValidation)
+	if(useValidation) {
 		impl_->debugCallback = std::make_unique<vpp::DebugCallback>(impl_->instance);
+	}
 
 	// init ny window
 	auto vkSurface = vk::SurfaceKHR {};
@@ -104,18 +98,13 @@ Engine::Engine()
 	ws.vulkan.instance = (VkInstance) impl_->instance.vkHandle();
 	ws.vulkan.storeSurface = &(std::uintptr_t&) (vkSurface);
 
-	impl_->windowContext_ = impl_->appContext_->createWindowContext(ws);
+	impl_->windowContext = impl_->appContext->createWindowContext(ws);
 
-	// finish vpp init
-	impl_->device = std::make_unique<vpp::Device>(impl_->instance, vkSurface, impl_->presentQueue);
-	auto& dev = *impl_->device;
-
-	impl_->scSettings.prefPresentMode = vk::PresentModeKHR::immediate;
-	impl_->scSettings.errorAction = vpp::DefaultSwapchainSettings::ErrorAction::none;
-	impl_->swapchain = {dev, vkSurface, {startSize[0], startSize[1]}, impl_->scSettings};
-
-	// renderer
-	impl_->renderer_ = std::make_unique<Renderer>(*this, startMsaa);
+	const vpp::Queue* presentQueue {};
+	impl_->device = std::make_unique<vpp::Device>(impl_->instance, 
+		vkSurface, presentQueue);
+	impl_->renderer = std::make_unique<Renderer>(*impl_->device, 
+		vkSurface, startMsaa, *presentQueue);
 }
 
 Engine::~Engine()
@@ -138,8 +127,8 @@ void Engine::mainLoop()
 	// loop is needed. See other android-working implementations using ny and
 	// vpp for examples.
 	while(run_) {
-		if(!impl_->appContext_->dispatchEvents()) {
-			dlg_info("::Engine::mainLoop"_src, "dispatchEvents returned false");
+		if(!impl_->appContext->pollEvents()) {
+			dlg_info("pollEvents returned false");
 			return;
 		}
 
@@ -147,13 +136,13 @@ void Engine::mainLoop()
 		auto deltaCount = std::chrono::duration_cast<secf>(now - lastFrame).count();
 		lastFrame = now;
 
-		renderer().renderBlock(*impl_->presentQueue);
+		renderer().renderBlock();
 
 		if(printFrames) {
 			++fpsCounter;
 			secCounter += deltaCount;
 			if(secCounter >= 1.f) {
-				dlg_info("::Engine::mainLoop"_src, "{} fps", fpsCounter);
+				dlg_info("{} fps", fpsCounter);
 				secCounter = 0.f;
 				fpsCounter = 0;
 			}
@@ -163,20 +152,15 @@ void Engine::mainLoop()
 
 void Engine::resize(nytl::Vec2ui size)
 {
-	if(!impl_->swapchain)
-		return;
-
-	impl_->swapchain.resize({size[0], size[1]}, impl_->scSettings);
-	impl_->renderer_->createBuffers();
+	impl_->renderer->resize(size);
 }
 
 void Engine::stop() { run_ = false; }
 
 // get functions
-ny::AppContext& Engine::appContext() const { return *impl_->appContext_; }
-ny::WindowContext& Engine::windowContext() const { return *impl_->windowContext_; }
+ny::AppContext& Engine::appContext() const { return *impl_->appContext; }
+ny::WindowContext& Engine::windowContext() const { return *impl_->windowContext; }
 
 vpp::Instance& Engine::vulkanInstance() const { return impl_->instance; }
 vpp::Device& Engine::vulkanDevice() const { return *impl_->device; }
-vpp::Swapchain& Engine::swapchain() const { return impl_->swapchain; }
-Renderer& Engine::renderer() const { return *impl_->renderer_; }
+Renderer& Engine::renderer() const { return *impl_->renderer; }

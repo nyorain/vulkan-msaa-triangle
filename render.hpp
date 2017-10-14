@@ -8,50 +8,38 @@
 #include <vpp/queue.hpp> // vpp::Queue
 #include <vpp/buffer.hpp> // vpp::Buffer
 #include <vpp/pipeline.hpp> // vpp::Pipeline
+#include <vpp/renderer.hpp> // vpp::DefaultRenderer
 #include <vpp/descriptor.hpp> // vpp::DescriptorSet
 #include <vpp/commandBuffer.hpp>
 #include <vpp/renderPass.hpp>
 #include <vpp/framebuffer.hpp>
 #include <vpp/sync.hpp>
 #include <vpp/queue.hpp>
+#include <vpp/vk.hpp> // FIXME
+#include <nytl/vec.hpp>
 
 class Engine;
 
-// vpp::RendererBuilder implementation
-class Renderer {
+class Renderer : public vpp::DefaultRenderer {
 public:
-	Renderer(Engine& engine, vk::SampleCountBits sampleCount);
+	Renderer(const vpp::Device&, vk::SurfaceKHR, vk::SampleCountBits samples,
+		const vpp::Queue& present);
 	~Renderer() = default;
 
-	void setupPipeline(vk::SampleCountBits sampleCount);
-	void createBuffers();
-	void renderBlock(const vpp::Queue& present);
-
-	vpp::Device& device() const;
+	void resize(nytl::Vec2ui size);
+	void samples(vk::SampleCountBits);
 
 protected:
-	void createMultisampleTarget();
-	void record();
-	void build(vk::CommandBuffer cmd);
+	void createMultisampleTarget(const vk::Extent2D& size);
+	void record(const RenderBuffer&) override;
+	void initBuffers(const vk::Extent2D&, nytl::Span<RenderBuffer>) override;
 
 protected:
-	Engine& engine_;
-
 	vpp::Pipeline trianglePipeline_;
 	vpp::PipelineLayout graphicsLayout_;
 	vpp::Buffer vertexBuffer_;
 	vpp::ViewableImage multisampleTarget_;
 	vpp::RenderPass renderPass_;
 	vk::SampleCountBits sampleCount_;
-	const vpp::Queue* renderQueue_;
-
-	vpp::Semaphore acquireComplete_;
-	vpp::Semaphore renderComplete_;
-
-	struct RenderBuffer {
-		vpp::CommandBuffer commandBuffer;
-		vpp::Framebuffer framebuffer;
-	};
-
-	std::vector<RenderBuffer> renderBuffers_;
+	vk::SwapchainCreateInfoKHR scInfo_;
 };

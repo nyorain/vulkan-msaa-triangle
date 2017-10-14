@@ -12,27 +12,36 @@
 #include <vpp/swapchain.hpp>
 
 #include <dlg/dlg.hpp> // dlg
-using namespace dlg::literals;
 
 // shader data
 #include <shaders/triangle.frag.h>
 #include <shaders/triangle.vert.h>
 
-vk::Pipeline createGraphicsPipelines(const vpp::Device&, vk::RenderPass, vk::PipelineLayout,
-	vk::SampleCountBits sampleCount);
-vpp::RenderPass createRenderPass(const vpp::Swapchain&, vk::SampleCountBits sampleCount);
+vk::Pipeline createGraphicsPipelines(const vpp::Device&, vk::RenderPass, 
+	vk::PipelineLayout, vk::SampleCountBits);
+vpp::RenderPass createRenderPass(const vpp::Device&, vk::Format, 
+	vk::SampleCountBits);
 
-Renderer::Renderer(Engine& engine, vk::SampleCountBits sampleCount) : engine_(engine)
+Renderer::Renderer(const vpp::Device& dev, vk::SurfaceKHR surface, 
+	vk::SampleCountBits samples, const vpp::Queue& present)
 {
+	// FIXME: size
+	// pipeline
+	sampleCount_ = samples;
+	scInfo_ = vpp::swapchainCreateInfo(dev, surface, {800u, 500u});
+
+	graphicsLayout_ = {dev, {}, {}};
+	renderPass_ = createRenderPass(dev, scInfo_.imageFormat, samples);
+
 	// buffer
 	vk::BufferCreateInfo bufInfo;
 	bufInfo.usage = vk::BufferUsageBits::vertexBuffer;
 	bufInfo.size = sizeof(float) * 3 * 5;
-	auto mem = device().memoryTypeBits(vk::MemoryPropertyBits::hostVisible);
-	vertexBuffer_ = {device(), bufInfo, mem};
+	auto mem = dev.memoryTypeBits(vk::MemoryPropertyBits::hostVisible);
+	vertexBuffer_ = {dev, bufInfo, mem};
 
 	// fill it
-	vertexBuffer_.assureMemory();
+	vertexBuffer_.ensureMemory();
 	float data[] = {
 		// pos	  // color
 		-.8f, .5f,  0.5f, 0.8f, 0.5f,
@@ -43,33 +52,23 @@ Renderer::Renderer(Engine& engine, vk::SampleCountBits sampleCount) : engine_(en
 	auto mmap = vertexBuffer_.memoryMap();
 	std::memcpy(mmap.ptr(), data, sizeof(float) * 3 * 5);
 
-	acquireComplete_ = {device()};
-	renderComplete_ = {device()};
+	auto pipeline = createGraphicsPipelines(dev, renderPass_, 
+		graphicsLayout_, sampleCount_);
+	trianglePipeline_ = {dev, pipeline};
 
-	setupPipeline(sampleCount);
+	// init renderer
+	vpp::DefaultRenderer::init(renderPass_, scInfo_, present);
 }
 
-void Renderer::setupPipeline(vk::SampleCountBits sampleCount)
+void Renderer::createMultisampleTarget(const vk::Extent2D& size)
 {
-	// graphics
-	sampleCount_ = sampleCount;
-	graphicsLayout_ = {device(), {}, {}};
-	renderPass_ = createRenderPass(engine_.swapchain(), sampleCount);
-	auto pipeline = createGraphicsPipelines(device(), renderPass_, graphicsLayout_, sampleCount);
-	trianglePipeline_ = {device(), pipeline};
-
-	createBuffers();
-}
-
-void Renderer::createMultisampleTarget()
-{
-	auto width = engine_.swapchain().size().width;
-	auto height = engine_.swapchain().size().height;
+	auto width = size.width;
+	auto height = size.height;
 
 	// img
 	vk::ImageCreateInfo img;
 	img.imageType = vk::ImageType::e2d;
-	img.format = engine_.swapchain().format();
+	img.format = scInfo_.imageFormat;
 	img.extent.width = width;
 	img.extent.height = height;
 	img.extent.depth = 1;
@@ -98,115 +97,67 @@ void Renderer::createMultisampleTarget()
 	multisampleTarget_ = {device(), {img, view}};
 }
 
-void Renderer::createBuffers()
+void Renderer::record(const RenderBuffer& buf)
 {
-	auto msaa = sampleCount_ != vk::SampleCountBits::e1;
-	if(msaa) createMultisampleTarget();
+	static const auto clearValue = vk::ClearValue {{0.f, 0.f, 0.f, 1.f}};
+	const auto width = scInfo_.imageExtent.width;
+	const auto height = scInfo_.imageExtent.height;
 
-	// create render buffers
-	vpp::Framebuffer::ExtAttachments attachments;
-	auto swapchainID = 0u;
+	auto cmdBuf = buf.commandBuffer;
+	vk::beginCommandBuffer(cmdBuf, {});
+	vk::cmdBeginRenderPass(cmdBuf, {
+		renderPass(),
+		buf.framebuffer,
+		{0u, 0u, width, height},
+		1,
+		&clearValue
+	}, {});
 
-	if(msaa) {
-		attachments = {{0, multisampleTarget_.vkImageView()}};
-		swapchainID = 1u;
-	}
+	vk::Viewport vp {0.f, 0.f, (float) width, (float) height, 0.f, 1.f};
+	vk::cmdSetViewport(cmdBuf, 0, 1, vp);
+	vk::cmdSetScissor(cmdBuf, 0, 1, {0, 0, width, height});
 
-	// render buffers
-	auto images = engine_.swapchain().renderBuffers();
-	renderQueue_ = device().queue(vk::QueueBits::graphics);
-	auto cmdBuffers = device().commandProvider().get(renderQueue_->family(), images.size());
+	vk::cmdBindPipeline(cmdBuf, vk::PipelineBindPoint::graphics, trianglePipeline_);
+	vk::cmdBindVertexBuffers(cmdBuf, 0, {vertexBuffer_}, {0});
+	vk::cmdDraw(cmdBuf, 3, 1, 0, 0);
 
-	renderBuffers_.resize(images.size());
-	for(auto i = 0u; i < renderBuffers_.size(); ++i) {
-		renderBuffers_[i].commandBuffer = std::move(cmdBuffers[i]);
-		attachments[swapchainID] = images[i].imageView;
-		renderBuffers_[i].framebuffer = {device(), renderPass_, engine_.swapchain().size(),
-			{}, attachments};
-	}
-
-	record();
+	vk::cmdEndRenderPass(cmdBuf);
+	vk::endCommandBuffer(cmdBuf);
 }
 
-void Renderer::record()
+void Renderer::resize(nytl::Vec2ui size)
 {
-	// record buffers
-	vk::CommandBufferBeginInfo cmdBufInfo;
-	auto clearValues = std::vector<vk::ClearValue>{{{{{0.0f, 0.0f, 0.0f, 1.0f}}}}}; // clear
-
-	auto width = engine_.swapchain().size().width;
-	auto height = engine_.swapchain().size().height;
-
-	vk::RenderPassBeginInfo rbeginInfo;
-	rbeginInfo.renderPass = renderPass_;
-	rbeginInfo.renderArea = {{0, 0}, {width, height}};
-	rbeginInfo.clearValueCount = clearValues.size();
-	rbeginInfo.pClearValues = clearValues.data();
-
-	vk::Viewport viewport;
-	viewport.width = width;
-	viewport.height = height;
-	viewport.minDepth = 0.f;
-	viewport.maxDepth = 1.f;
-
-	vk::Rect2D scissor;
-	scissor.extent = {width, height};
-	scissor.offset = {0, 0};
-
-	for(auto& buf : renderBuffers_) {
-		rbeginInfo.framebuffer = buf.framebuffer;
-
-		vk::beginCommandBuffer(buf.commandBuffer, cmdBufInfo);
-		vk::cmdBeginRenderPass(buf.commandBuffer, rbeginInfo, vk::SubpassContents::eInline);
-
-		vk::cmdSetViewport(buf.commandBuffer, 0, 1, viewport);
-		vk::cmdSetScissor(buf.commandBuffer, 0, 1, scissor);
-
-		build(buf.commandBuffer);
-
-		vk::cmdEndRenderPass(buf.commandBuffer);
-		vk::endCommandBuffer(buf.commandBuffer);
-	}
+	vpp::DefaultRenderer::resize({size[0], size[1]}, scInfo_);
 }
 
-void Renderer::build(vk::CommandBuffer cmdBuffer)
+void Renderer::samples(vk::SampleCountBits samples)
 {
-	vk::cmdBindPipeline(cmdBuffer, vk::PipelineBindPoint::graphics, trianglePipeline_);
-	vk::cmdBindVertexBuffers(cmdBuffer, 0, {vertexBuffer_}, {0});
-	vk::cmdDraw(cmdBuffer, 3, 1, 0, 0);
-}
-
-void Renderer::renderBlock(const vpp::Queue& present)
-{
-	unsigned int currentBuffer;
-	auto result = engine_.swapchain().acquire(currentBuffer, acquireComplete_);
-	if(result == vk::Result::errorOutOfDateKHR) {
-		// we simply skip the frame since the engine should resize/recreate
-		// the swapchain (and the renderer data) in the next loop during
-		// dispatching of events since we must have gotten a resize event.
-		dlg_info("render"_module, "Swapchain out of date. Skipping frame");
-		return;
+	sampleCount_ = samples;
+	if(sampleCount_ != vk::SampleCountBits::e1) {
+		createMultisampleTarget(scInfo_.imageExtent);
 	}
 
-	auto& cmdBuf = renderBuffers_[currentBuffer].commandBuffer;
-	vk::PipelineStageFlags flag = vk::PipelineStageBits::colorAttachmentOutput;
+	renderPass_ = createRenderPass(device(), scInfo_.imageFormat, samples);
+	vpp::DefaultRenderer::renderPass_ = renderPass_;
+	auto pipeline = createGraphicsPipelines(device(), renderPass_, 
+		graphicsLayout_, sampleCount_);
+	trianglePipeline_ = {device(), pipeline};
 
-	vk::SubmitInfo submitInfo;
-	submitInfo.waitSemaphoreCount = 1;
-	submitInfo.pWaitSemaphores = &acquireComplete_.vkHandle();
-	submitInfo.pWaitDstStageMask = &flag;
-	submitInfo.signalSemaphoreCount = 1;
-	submitInfo.pSignalSemaphores = &renderComplete_.vkHandle();
-
-	vpp::CommandExecutionState execState;
-	device().submitManager().add(*renderQueue_, {cmdBuf}, submitInfo, &execState);
-	device().submitManager().submit(*renderQueue_);
-
-	engine_.swapchain().present(present, currentBuffer, renderComplete_);
-	execState.wait();
+	initBuffers(scInfo_.imageExtent, renderBuffers_);
+	invalidate();
 }
 
-vpp::Device& Renderer::device() const { return engine_.vulkanDevice(); }
+void Renderer::initBuffers(const vk::Extent2D& size, 
+	nytl::Span<RenderBuffer> bufs)
+{
+	if(sampleCount_ != vk::SampleCountBits::e1) {
+		createMultisampleTarget(scInfo_.imageExtent);
+		vpp::DefaultRenderer::initBuffers(size, bufs, 
+			{multisampleTarget_.vkImageView()});
+	} else {
+		vpp::DefaultRenderer::initBuffers(size, bufs, {});
+	}
+}
 
 // utility
 vk::Pipeline createGraphicsPipelines(const vpp::Device& device,
@@ -297,10 +248,7 @@ vk::Pipeline createGraphicsPipelines(const vpp::Device& device,
 
 	// setup cache
 	constexpr auto cacheName = "graphicsCache.bin";
-
-	vpp::PipelineCache cache;
-	if(vpp::fileExists(cacheName)) cache = {device, cacheName};
-	else cache = {device};
+	vpp::PipelineCache cache {device, cacheName};
 
 	vk::Pipeline ret;
 	vk::createGraphicsPipelines(device, cache, 1, trianglePipe, nullptr, ret);
@@ -309,7 +257,8 @@ vk::Pipeline createGraphicsPipelines(const vpp::Device& device,
 	return ret;
 }
 
-vpp::RenderPass createRenderPass(const vpp::Swapchain& swapchain, vk::SampleCountBits sampleCount)
+vpp::RenderPass createRenderPass(const vpp::Device& dev,
+	vk::Format format, vk::SampleCountBits sampleCount)
 {
 	vk::AttachmentDescription attachments[2] {};
 	auto msaa = sampleCount != vk::SampleCountBits::e1;
@@ -317,7 +266,7 @@ vpp::RenderPass createRenderPass(const vpp::Swapchain& swapchain, vk::SampleCoun
 	auto swapchainID = 0u;
 	if(msaa) {
 		// multisample color attachment
-		attachments[0].format = swapchain.format();
+		attachments[0].format = format;
 		attachments[0].samples = sampleCount;
 		attachments[0].loadOp = vk::AttachmentLoadOp::clear;
 		attachments[0].storeOp = vk::AttachmentStoreOp::dontCare;
@@ -330,7 +279,7 @@ vpp::RenderPass createRenderPass(const vpp::Swapchain& swapchain, vk::SampleCoun
 	}
 
 	// swapchain color attachments we want to resolve to
-	attachments[swapchainID].format = swapchain.format();
+	attachments[swapchainID].format = format;
 	attachments[swapchainID].samples = vk::SampleCountBits::e1;
 	if(msaa) attachments[swapchainID].loadOp = vk::AttachmentLoadOp::dontCare;
 	else attachments[swapchainID].loadOp = vk::AttachmentLoadOp::clear;
@@ -389,5 +338,5 @@ vpp::RenderPass createRenderPass(const vpp::Swapchain& swapchain, vk::SampleCoun
 		renderPassInfo.pDependencies = dependencies.data();
 	}
 
-	return {swapchain.device(), renderPassInfo};
+	return {dev, renderPassInfo};
 }

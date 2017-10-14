@@ -5,7 +5,7 @@ shaders_src = [
 shaders = []
 glslang = find_program('glslangValidator')
 
-bth_exe = find_program('bintoheader')
+bth_exe = find_program('bintoheader', required: false)
 if not bth_exe.found()
 	bth_sub = subproject('bintoheader')
 	bth_exe = bth_sub.get_variable('bintoheader_executable')

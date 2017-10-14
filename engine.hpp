@@ -24,7 +24,6 @@ public:
 
 	vpp::Instance& vulkanInstance() const;
 	vpp::Device& vulkanDevice() const;
-	vpp::Swapchain& swapchain() const;
 
 	Renderer& renderer() const;
 

@@ -15,19 +15,20 @@
 #include <ny/appContext.hpp> // ny::AppContext
 #include <ny/windowContext.hpp> // ny::WindowContext
 #include <ny/windowSettings.hpp> // ny::WindowEdge
+#include <nytl/vecOps.hpp> // operator<<
 
 // TODO: to make this work for android, implement the surfaceCreated/surfaceDestroyed
 // methods
-
-using namespace dlg::literals;
 
 void MainWindowListener::mouseButton(const ny::MouseButtonEvent& ev)
 {
 	if(ev.pressed) {
 		if(ev.button == ny::MouseButton::left) {
-			bool alt = ac().keyboardContext()->modifiers() & ny::KeyboardModifier::alt;
+			auto mods = ac().keyboardContext()->modifiers();
+			dlg_info("mods: {}", (int) mods);
+			bool alt = mods & ny::KeyboardModifier::alt;
 
-			if(wc().customDecorated() && alt) {
+			if(wc().customDecorated() || alt) {
 				if(ev.position[0] < 0 || ev.position[1] < 0 ||
 					static_cast<unsigned int>(ev.position[0]) > size_[0] ||
 					static_cast<unsigned int>(ev.position[1]) > size_[1])
@@ -45,10 +46,10 @@ void MainWindowListener::mouseButton(const ny::MouseButtonEvent& ev)
 					resizeEdges |= ny::WindowEdge::bottom;
 
 				if(resizeEdges != ny::WindowEdge::none) {
-					dlg_info("window"_module, "Starting to resize window");
+					dlg_info("Starting to resize window");
 					wc().beginResize(ev.eventData, resizeEdges);
 				} else {
-					dlg_info("window"_module, "Starting to move window");
+					dlg_info("Starting to move window");
 					wc().beginMove(ev.eventData);
 				}
 			}
@@ -57,12 +58,10 @@ void MainWindowListener::mouseButton(const ny::MouseButtonEvent& ev)
 }
 void MainWindowListener::key(const ny::KeyEvent& keyEvent)
 {
-	static const dlg::Source source = "window"_module;
-
 	auto keycode = keyEvent.keycode;
 	if(keyEvent.pressed && ac().keyboardContext()->modifiers() & ny::KeyboardModifier::shift) {
 		if(keycode == ny::Keycode::f) {
-			dlg_info(source, "f pressed. Toggling fullscreen");
+			dlg_info("f pressed. Toggling fullscreen");
 			if(toplevelState_ != ny::ToplevelState::fullscreen) {
 				wc().fullscreen();
 				toplevelState_ = ny::ToplevelState::fullscreen;
@@ -71,13 +70,13 @@ void MainWindowListener::key(const ny::KeyEvent& keyEvent)
 				toplevelState_ = ny::ToplevelState::normal;
 			}
 		} else if(keycode == ny::Keycode::n) {
-			dlg_info(source, "n pressed. Resetting window to normal state");
+			dlg_info("n pressed. Resetting window to normal state");
 			wc().normalState();
 		} else if(keycode == ny::Keycode::escape) {
-			dlg_info(source, "escape pressed. Closing window and exiting");
+			dlg_info("escape pressed. Closing window and exiting");
 			engine_.stop();
 		} else if(keycode == ny::Keycode::m) {
-			dlg_info(source, "m pressed. Toggle window maximize");
+			dlg_info("m pressed. Toggle window maximize");
 			if(toplevelState_ != ny::ToplevelState::maximized) {
 				wc().maximize();
 				toplevelState_ = ny::ToplevelState::maximized;
@@ -86,26 +85,26 @@ void MainWindowListener::key(const ny::KeyEvent& keyEvent)
 				toplevelState_ = ny::ToplevelState::normal;
 			}
 		} else if(keycode == ny::Keycode::i) {
-			dlg_info(source, "i pressed, Minimizing window");
+			dlg_info("i pressed, Minimizing window");
 			toplevelState_ = ny::ToplevelState::minimized;
 			wc().minimize();
 		} else if(keycode == ny::Keycode::d) {
-			dlg_info(source, "d pressed. Trying to toggle decorations");
+			dlg_info("d pressed. Trying to toggle decorations");
 			wc().customDecorated(!wc().customDecorated());
 		}
 	} else if(keyEvent.pressed) {
 		if(keycode == ny::Keycode::k1) {
-			dlg_info(source, "Using no multisampling");
-			engine_.renderer().setupPipeline(vk::SampleCountBits::e1);
+			dlg_info("Using no multisampling");
+			engine_.renderer().samples(vk::SampleCountBits::e1);
 		} else if(keycode == ny::Keycode::k2) {
-			dlg_info(source, "Using 2 multisamples");
-			engine_.renderer().setupPipeline(vk::SampleCountBits::e2);
+			dlg_info("Using 2 multisamples");
+			engine_.renderer().samples(vk::SampleCountBits::e2);
 		} else if(keycode == ny::Keycode::k4) {
-			dlg_info(source, "Using 4 multisamples");
-			engine_.renderer().setupPipeline(vk::SampleCountBits::e4);
+			dlg_info("Using 4 multisamples");
+			engine_.renderer().samples(vk::SampleCountBits::e4);
 		} else if(keycode == ny::Keycode::k8) {
-			dlg_info(source, "Using 8 multisamples");
-			engine_.renderer().setupPipeline(vk::SampleCountBits::e8);
+			dlg_info("Using 8 multisamples");
+			engine_.renderer().samples(vk::SampleCountBits::e8);
 		}
 	}
 }
@@ -120,9 +119,9 @@ void MainWindowListener::close(const ny::CloseEvent&)
 }
 void MainWindowListener::resize(const ny::SizeEvent& ev)
 {
-	dlg_info("window"_module, "resize: {}", ev.size);
+	dlg_info("resize: {}", ev.size);
 	size_ = ev.size;
-	engine_.resize(ev.size);
+	engine_.resize(ev.size); // TODO
 }
 
 ny::AppContext& MainWindowListener::ac() const { return engine_.appContext(); }
