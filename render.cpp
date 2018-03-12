@@ -94,7 +94,7 @@ void Renderer::createMultisampleTarget(const vk::Extent2D& size)
 
 	// create the viewable image
 	// will set the created image in the view info for us
-	multisampleTarget_ = {device(), {img, view}};
+	multisampleTarget_ = {device(), img, view};
 }
 
 void Renderer::record(const RenderBuffer& buf)
