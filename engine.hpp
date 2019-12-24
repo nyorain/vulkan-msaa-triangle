@@ -7,6 +7,7 @@
 #include <ny/fwd.hpp>
 #include <vpp/fwd.hpp>
 #include <nytl/vec.hpp>
+#include <memory>
 
 class Renderer;
 

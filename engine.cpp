@@ -12,12 +12,11 @@
 #include <ny/windowListener.hpp> // ny::WindowListener
 #include <ny/windowSettings.hpp> // ny::WindowSettings
 
-#include <vpp/instance.hpp> // vpp::Instance
 #include <vpp/device.hpp> // vpp::Device
 #include <vpp/queue.hpp> // vpp::Queue
 #include <vpp/swapchain.hpp> // vpp::Swapchain
 #include <vpp/renderer.hpp> // vpp::SwapchainRenderer
-#include <vpp/debug.hpp> // vpp::DebugCallback
+#include <vpp/debugReport.hpp> // vpp::DebugCallback
 
 #include <dlg/dlg.hpp> // dlg
 
@@ -101,9 +100,9 @@ Engine::Engine()
 	impl_->windowContext = impl_->appContext->createWindowContext(ws);
 
 	const vpp::Queue* presentQueue {};
-	impl_->device = std::make_unique<vpp::Device>(impl_->instance, 
+	impl_->device = std::make_unique<vpp::Device>(impl_->instance,
 		vkSurface, presentQueue);
-	impl_->renderer = std::make_unique<Renderer>(*impl_->device, 
+	impl_->renderer = std::make_unique<Renderer>(*impl_->device,
 		vkSurface, startMsaa, *presentQueue);
 }
 
@@ -136,7 +135,7 @@ void Engine::mainLoop()
 		auto deltaCount = std::chrono::duration_cast<secf>(now - lastFrame).count();
 		lastFrame = now;
 
-		renderer().renderBlock();
+		renderer().renderStall();
 
 		if(printFrames) {
 			++fpsCounter;

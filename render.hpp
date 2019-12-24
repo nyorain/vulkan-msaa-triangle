@@ -10,10 +10,7 @@
 #include <vpp/pipeline.hpp> // vpp::Pipeline
 #include <vpp/renderer.hpp> // vpp::DefaultRenderer
 #include <vpp/descriptor.hpp> // vpp::DescriptorSet
-#include <vpp/commandBuffer.hpp>
-#include <vpp/renderPass.hpp>
-#include <vpp/framebuffer.hpp>
-#include <vpp/sync.hpp>
+#include <vpp/handles.hpp>
 #include <vpp/queue.hpp>
 #include <vpp/vk.hpp> // FIXME
 #include <nytl/vec.hpp>

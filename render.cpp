@@ -8,7 +8,6 @@
 #include <nytl/mat.hpp>
 #include <vpp/vk.hpp>
 #include <vpp/util/file.hpp>
-#include <vpp/renderPass.hpp>
 #include <vpp/swapchain.hpp>
 
 #include <dlg/dlg.hpp> // dlg
@@ -17,12 +16,12 @@
 #include <shaders/triangle.frag.h>
 #include <shaders/triangle.vert.h>
 
-vk::Pipeline createGraphicsPipelines(const vpp::Device&, vk::RenderPass, 
+vk::Pipeline createGraphicsPipelines(const vpp::Device&, vk::RenderPass,
 	vk::PipelineLayout, vk::SampleCountBits);
-vpp::RenderPass createRenderPass(const vpp::Device&, vk::Format, 
+vpp::RenderPass createRenderPass(const vpp::Device&, vk::Format,
 	vk::SampleCountBits);
 
-Renderer::Renderer(const vpp::Device& dev, vk::SurfaceKHR surface, 
+Renderer::Renderer(const vpp::Device& dev, vk::SurfaceKHR surface,
 	vk::SampleCountBits samples, const vpp::Queue& present)
 {
 	// FIXME: size
@@ -38,10 +37,9 @@ Renderer::Renderer(const vpp::Device& dev, vk::SurfaceKHR surface,
 	bufInfo.usage = vk::BufferUsageBits::vertexBuffer;
 	bufInfo.size = sizeof(float) * 3 * 5;
 	auto mem = dev.memoryTypeBits(vk::MemoryPropertyBits::hostVisible);
-	vertexBuffer_ = {dev, bufInfo, mem};
+	vertexBuffer_ = {dev.devMemAllocator(), bufInfo, mem};
 
 	// fill it
-	vertexBuffer_.ensureMemory();
 	float data[] = {
 		// pos	  // color
 		-.8f, .5f,  0.5f, 0.8f, 0.5f,
@@ -49,10 +47,10 @@ Renderer::Renderer(const vpp::Device& dev, vk::SurfaceKHR surface,
 		0.f, -.5f,   0.5f, 0.5f, 0.3f
 	};
 
-	auto mmap = vertexBuffer_.memoryMap();
+	juto mmap = vertexBuffer_.memoryMap(0, vk::wholeSize);
 	std::memcpy(mmap.ptr(), data, sizeof(float) * 3 * 5);
 
-	auto pipeline = createGraphicsPipelines(dev, renderPass_, 
+	auto pipeline = createGraphicsPipelines(dev, renderPass_,
 		graphicsLayout_, sampleCount_);
 	trianglePipeline_ = {dev, pipeline};
 
@@ -127,7 +125,7 @@ void Renderer::record(const RenderBuffer& buf)
 
 void Renderer::resize(nytl::Vec2ui size)
 {
-	vpp::DefaultRenderer::resize({size[0], size[1]}, scInfo_);
+	vpp::DefaultRenderer::recreate({size.x, size.y}, scInfo_);
 }
 
 void Renderer::samples(vk::SampleCountBits samples)
@@ -139,7 +137,7 @@ void Renderer::samples(vk::SampleCountBits samples)
 
 	renderPass_ = createRenderPass(device(), scInfo_.imageFormat, samples);
 	vpp::DefaultRenderer::renderPass_ = renderPass_;
-	auto pipeline = createGraphicsPipelines(device(), renderPass_, 
+	auto pipeline = createGraphicsPipelines(device(), renderPass_,
 		graphicsLayout_, sampleCount_);
 	trianglePipeline_ = {device(), pipeline};
 
@@ -147,12 +145,12 @@ void Renderer::samples(vk::SampleCountBits samples)
 	invalidate();
 }
 
-void Renderer::initBuffers(const vk::Extent2D& size, 
+void Renderer::initBuffers(const vk::Extent2D& size,
 	nytl::Span<RenderBuffer> bufs)
 {
 	if(sampleCount_ != vk::SampleCountBits::e1) {
 		createMultisampleTarget(scInfo_.imageExtent);
-		vpp::DefaultRenderer::initBuffers(size, bufs, 
+		vpp::DefaultRenderer::initBuffers(size, bufs,
 			{multisampleTarget_.vkImageView()});
 	} else {
 		vpp::DefaultRenderer::initBuffers(size, bufs, {});
